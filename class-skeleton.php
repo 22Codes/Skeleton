@@ -87,6 +87,14 @@ abstract class Skeleton {
 	protected $options = array();
 
 	/**
+	 * Stores admin notices.
+	 *
+	 * @var array
+	 * @var protected
+	 */
+	protected $admin_notices = array();
+
+	/**
 	 * Override this method to extend the constructor.
 	 */
 	protected function construct() {
@@ -157,6 +165,9 @@ abstract class Skeleton {
 		    $this->plugin_file = $network_plugin;
 		}
 
+		if ( empty( $this->plugin_file ) )
+			$this->die( "Could not figure out the main plugin file's path" );
+
 		// Figure out the plugin directory.
 		$this->plugin_dir = plugin_dir_path( $this->plugin_file );
 
@@ -166,7 +177,9 @@ abstract class Skeleton {
 		// Enable internationalization.
 		load_plugin_textdomain( $this->plugin_name, false, $this->plugin_dir . '/languages' );
 
-		$this->action_hooks = array( 'plugins_loaded', 'init', 'activate_plugin', 'deactivated_plugin', 'shutdown' );
+		$this->action_hooks = array(
+			'plugins_loaded', 'init', 'activate_plugin', 'deactivated_plugin', 'admin_notices', 'shutdown'
+		);
 
 		$this->construct();
 
@@ -181,12 +194,12 @@ abstract class Skeleton {
 				add_filter( $hook, array( &$this, $hook ) );
 
 		// Register ajax actions for users.
-    foreach ( $this->ajax_actions as $action )
-      add_action( "wp_ajax_" . $this->plugin_name . "-" . $action, array( &$this, "$action" ) );
+		foreach ( $this->ajax_actions as $action )
+			add_action( "wp_ajax_" . $this->plugin_name . "-" . $action, array( &$this, "$action" ) );
 
-    // Register ajax actions for visitors.
-    foreach ( $this->ajax_nopriv_actions as $action )
-      add_action( "wp_ajax_nopriv_" . $this->plugin_name . "-" . $action, array( &$this, $action ) );
+		// Register ajax actions for visitors.
+		foreach ( $this->ajax_nopriv_actions as $action )
+			add_action( "wp_ajax_nopriv_" . $this->plugin_name . "-" . $action, array( &$this, $action ) );
 	}
 
 	public function plugins_loaded() {
@@ -229,7 +242,7 @@ abstract class Skeleton {
 		}
 		catch ( Exception $e ) {
 			deactivate_plugins( $this->plugin_file, true );
-			echo '<div id="message" class="error">' . $e->getMessage() . '</div>';
+			echo $e->getMessage();
 			return;
 		}
 
@@ -267,5 +280,48 @@ abstract class Skeleton {
 
 		// Update the version number
 		$this->options['version'] = $this->plugin_version;
+	}
+
+	private function add_admin_notice( $message = '', $type = 'updated' ) {
+		if( did_action( 'admin_notices' ) ) {
+			return $this->error( 'late_call',
+				__( 'Cannot add admin notice. Notices have already been printed.', $this->plugin_name ) );
+		}
+
+		if ( empty( $message ) )
+			return $this->error( 'empty_message', __( 'The message string cannot be empty.', $this->plugin_name ) );
+
+		$this->admin_notices[$type][] = $message;
+	}
+
+	/**
+	 * Prints admin notices.
+	 */
+	public function admin_notices() {
+		if ( empty( $this->admin_notices ) )
+			return;
+
+		$ret = '';
+		foreach ( $this->admin_notices as $type => $messages ) {
+			$ret .= '<div class="' . $type . '">';
+			foreach ( $messages as $message )
+				$ret .= '<p>' . esc_html( $message ) . '</p>';
+			$ret .= '</div>';
+		}
+		if ( $ret )
+			echo $ret;
+	}
+
+	protected function error( $code = '', $message = '' ) {
+		if ( empty( $code ) || empty( $message ) )
+			return;
+		if ( WP_DEBUG )
+			trigger_error( $message, E_USER_ERROR );
+		return new WP_Error( $code, $message );
+	}
+
+	protected function die( $message = '' ) {
+		$this->error( 'fatal_error', $message );
+		die();
 	}
 }
