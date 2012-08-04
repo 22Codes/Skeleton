@@ -42,6 +42,13 @@ abstract class Skeleton {
 	protected $plugin_file = '';
 
 	/**
+	 * Stores the minimum WordPress version required.
+	 *
+	 * @var string
+	 * @access public
+	 */
+	public $min_wp_version = '';
+
 	 * Stores the list of action hooks to register.
 	 *
 	 * @var array
@@ -181,6 +188,9 @@ abstract class Skeleton {
 			'plugins_loaded', 'init', 'activate_plugin', 'deactivated_plugin', 'admin_notices', 'shutdown'
 		);
 
+		// Set the minimum required WordPress version.
+		$this->min_wp_version = '3.4';
+
 		$this->construct();
 
 		// Register actions with callback functions having the same name as the hook.
@@ -238,6 +248,11 @@ abstract class Skeleton {
 			// check WordPress version
 			if ( version_compare( $wp_version, '3.4', '<' ) ) {
 			  throw new Exception( __( 'This plugin requires WordPress 3.4 or higher!', $this->plugin_name ) );
+			if ( version_compare( $wp_version, $this->min_wp_version, '<' ) ) {
+			  throw new Exception( sprintf(
+			  	__( 'This plugin requires WordPress version %s or higher!', $this->plugin_name ),
+			  	$this->min_wp_version
+			  ) );
 			}
 		}
 		catch ( Exception $e ) {
