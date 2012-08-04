@@ -4,8 +4,6 @@
  */
 abstract class Skeleton {
 
-	const version = '1.0';
-
 	/**
 	 * Stores the name of the plugin as the parent directory name
 	 * with only lowercase alphanumeric characters, dashes and underscores.
@@ -246,8 +244,6 @@ abstract class Skeleton {
 		// Check for compatibility
 		try {
 			// check WordPress version
-			if ( version_compare( $wp_version, '3.4', '<' ) ) {
-			  throw new Exception( __( 'This plugin requires WordPress 3.4 or higher!', $this->plugin_name ) );
 			if ( version_compare( $wp_version, $this->min_wp_version, '<' ) ) {
 			  throw new Exception( sprintf(
 			  	__( 'This plugin requires WordPress version %s or higher!', $this->plugin_name ),
@@ -297,34 +293,32 @@ abstract class Skeleton {
 		$this->options['version'] = $this->plugin_version;
 	}
 
-	private function add_admin_notice( $message = '', $type = 'updated' ) {
-		if( did_action( 'admin_notices' ) ) {
-			return $this->error( 'late_call',
-				__( 'Cannot add admin notice. Notices have already been printed.', $this->plugin_name ) );
-		}
-
-		if ( empty( $message ) )
-			return $this->error( 'empty_message', __( 'The message string cannot be empty.', $this->plugin_name ) );
-
-		$this->admin_notices[$type][] = $message;
-	}
-
 	/**
 	 * Prints admin notices.
 	 */
 	public function admin_notices() {
-		if ( empty( $this->admin_notices ) )
+		if ( !is_wp_error( $this->admin_notices ) )
 			return;
 
-		$ret = '';
-		foreach ( $this->admin_notices as $type => $messages ) {
-			$ret .= '<div class="' . $type . '">';
-			foreach ( $messages as $message )
-				$ret .= '<p>' . esc_html( $message ) . '</p>';
-			$ret .= '</div>';
+		if ( !$this->front_notices->get_error_code() )
+			return;
+
+		$errors = '';
+		$messages = '';
+		foreach ( $this->front_notices->get_error_codes() as $code ) {
+			$severity = $this->front_notices->get_error_data( $code );
+			foreach ( $this->front_notices->get_error_messages( $code ) as $error ) {
+				if ( 'message' == $severity )
+					$messages .= '<p>' . $error . '</p>';
+				else
+					$errors .= '<p>' . $error . '</p>';
+			}
 		}
-		if ( $ret )
-			echo $ret;
+
+		if ( !empty( $errors ) )
+			echo '<div id="error">' . $errors . "</div>";
+		if ( !empty( $messages ) )
+			echo '<div class="updated">' . $messages . "</div>";
 	}
 
 	protected function error( $code = '', $message = '' ) {
