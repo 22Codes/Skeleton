@@ -1,6 +1,27 @@
 <?php
+/*
+	Copyright 2012 Sorin Iclanzan  (email : sorin@hel.io)
+
+	This file is part of Skeleton.
+
+	Skeleton is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Backup is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Skeleton. If not, see http://www.gnu.org/licenses/gpl.html.
+*/
+
 /**
  * Skeleton class
+ *
+ * This class is meant to be extended in order to more easily create WordPress plugins.
  */
 abstract class Skeleton {
 
@@ -47,6 +68,7 @@ abstract class Skeleton {
 	 */
 	public $min_wp_version = '';
 
+	/**
 	 * Stores the list of action hooks to register.
 	 *
 	 * @var array
@@ -94,10 +116,18 @@ abstract class Skeleton {
 	/**
 	 * Stores admin notices.
 	 *
-	 * @var array
+	 * @var WP_Error
 	 * @var protected
 	 */
-	protected $admin_notices = array();
+	protected $admin_notices;
+
+	/**
+	 * Stores errors for debugging.
+	 *
+	 * @var WP_Error
+	 * @var protected
+	 */
+	protected $errors;
 
 	/**
 	 * Override this method to extend the constructor.
@@ -170,8 +200,9 @@ abstract class Skeleton {
 		    $this->plugin_file = $network_plugin;
 		}
 
+		// Die if we can't determine the plugin file path.
 		if ( empty( $this->plugin_file ) )
-			$this->die( "Could not figure out the main plugin file's path" );
+			$this->kill( "Could not determine the main plugin file's path" );
 
 		// Figure out the plugin directory.
 		$this->plugin_dir = plugin_dir_path( $this->plugin_file );
@@ -182,6 +213,7 @@ abstract class Skeleton {
 		// Enable internationalization.
 		load_plugin_textdomain( $this->plugin_name, false, $this->plugin_dir . '/languages' );
 
+		// Set the default action hooks to use.
 		$this->action_hooks = array(
 			'plugins_loaded', 'init', 'activate_plugin', 'deactivated_plugin', 'admin_notices', 'shutdown'
 		);
@@ -189,6 +221,7 @@ abstract class Skeleton {
 		// Set the minimum required WordPress version.
 		$this->min_wp_version = '3.4';
 
+		// Run actions from the child class.
 		$this->construct();
 
 		// Register actions with callback functions having the same name as the hook.
@@ -210,6 +243,11 @@ abstract class Skeleton {
 			add_action( "wp_ajax_nopriv_" . $this->plugin_name . "-" . $action, array( &$this, $action ) );
 	}
 
+
+	/**
+	 * This method is hooked to 'plugins_loaded', which is the first hook available
+	 * after all plugins and functions have been loaded.
+	 */
 	public function plugins_loaded() {
 		// Set the default options.
 		$default_options = array(
@@ -229,13 +267,22 @@ abstract class Skeleton {
 			$this->update();
 		}
 
+		// Run actions from the child class.
 		$this->loaded();
 	}
 
+	/**
+	 * This method is hooked to 'init', where most plugins and themes hook to do their magic.
+	 */
 	public function init() {
+		// Run actions from the child class.
 		$this->initialize();
 	}
 
+	/**
+	 * This method is hooked to 'activate_plugin' which is an alternative to register_activation_hook().
+	 * I used this here because it integrates better with Skeleton.
+	 */
 	public function activate_plugin( $plugin ) {
 		if ( WP_PLUGIN_DIR . '/' . $plugin != $this->plugin_file )
 			return;
@@ -257,9 +304,14 @@ abstract class Skeleton {
 			return;
 		}
 
+		// Run actions from the child class.
 		$this->activate();
 	}
 
+	/**
+	 * This method is hooked to 'deactivated_plugin' which is an alternative to register_deactivation_hook().
+	 * I used this here because it integrates better with Skeleton.
+	 */
 	public function deactivated_plugin( $plugin ) {
 		if ( WP_PLUGIN_DIR . '/' . $plugin != $this->plugin_file )
 			return;
@@ -269,24 +321,39 @@ abstract class Skeleton {
 			wp_clear_scheduled_hook( $this->plugin_name . '_schedule' );
 		}
 
+		// Run actions from the child class.
 		$this->deactivate();
 	}
 
+	/**
+	 * This method is hooked to 'shutdown'. It gets triggered just before the end of script execution.
+	 * It runs even when timeouts occur or exit is called, making it very useful.
+	 */
 	public function shutdown() {
+		// Run actions from the child class.
 		$this->terminate();
 
+		// Update plugin options.
 		update_option( $this->plugin_name, $this->options );
 	}
 
+	/**
+	 * This method runs the first time the plugin is activated, setting the default options.
+	 * Can be overriden.
+	 */
 	protected function install() {
 		// Add the default options.
 		$this->options = $this->default_options;
 	}
 
+	/**
+	 * This method runs when a change in the plugin version string is detected, allowing update routines to be made.
+	 */
 	protected function update() {
 		// Add new options without overwriting the old ones which might have been customized by the user.
 		$this->options = $this->options + $this->default_options;
 
+		// Run actions from the child class.
 		$this->upgrade();
 
 		// Update the version number
@@ -321,15 +388,35 @@ abstract class Skeleton {
 			echo '<div class="updated">' . $messages . "</div>";
 	}
 
-	protected function error( $code = '', $message = '' ) {
+	/**
+	 * Trigger errors.
+	 *
+	 * @uses WP_Error to store errors.
+	 * @param  string  $code    Error code
+	 * @param  string  $message Error message
+	 * @param  mixed   $data    Optional data to store
+	 * @return boolean          Returns TRUE on success, FALSE on failure.
+	 */
+	protected function error( $code = '', $message = '', $data = '' ) {
 		if ( empty( $code ) || empty( $message ) )
-			return;
+			return false;
+
 		if ( WP_DEBUG )
 			trigger_error( $message, E_USER_ERROR );
-		return new WP_Error( $code, $message );
+
+		if ( !is_wp_error( $this->errors ) )
+			$this->errors = new WP_Error();
+
+		$this->errors->add( $code, $message, $data );
+		return true;
 	}
 
-	protected function die( $message = '' ) {
+	/**
+	 * Kill script execution.
+	 *
+	 * @param string $message Error message
+	 */
+	protected function kill( $message = '' ) {
 		$this->error( 'fatal_error', $message );
 		die();
 	}
