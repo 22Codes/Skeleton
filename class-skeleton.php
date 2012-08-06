@@ -77,13 +77,6 @@ abstract class Skeleton {
 	protected $action_hooks = array();
 
 	/**
-	 * Stores the list of filter hooks to register.
-	 * @var array
-	 * @access protected
-	 */
-	protected $filter_hooks = array();
-
-	/**
 	 * Stores a list of AJAX actions to register for users.
 	 * @var array
 	 * @access protected
@@ -151,10 +144,12 @@ abstract class Skeleton {
 	}
 
 	/**
-	 * Override this method to add actions that run on plugin activation.
+	 * Override this method to add actions and checks that run on plugin activation.
+	 *
+	 * @return string Return a string describing why plugin activation failed. On success return an empty string.
 	 */
 	protected function activate() {
-
+		return '';
 	}
 
 	/**
@@ -207,7 +202,7 @@ abstract class Skeleton {
 		// Figure out the plugin directory.
 		$this->plugin_dir = plugin_dir_path( $this->plugin_file );
 
-		// Figure out a name to use.
+		// Work out a name to use.
 		$this->plugin_name = sanitize_key( basename( $this->plugin_dir ) );
 
 		// Enable internationalization.
@@ -228,11 +223,6 @@ abstract class Skeleton {
 		foreach ( $this->action_hooks as $hook )
 			if ( method_exists( $this, $hook ) )
 				add_action( $hook, array( &$this, $hook ) );
-
-		// Register filters with callback functions having the same name as the hook.
-		foreach ( $this->filter_hooks as $hook )
-			if ( method_exists( $this, $hook ) )
-				add_filter( $hook, array( &$this, $hook ) );
 
 		// Register ajax actions for users.
 		foreach ( $this->ajax_actions as $action )
@@ -281,36 +271,35 @@ abstract class Skeleton {
 
 	/**
 	 * This method is hooked to 'activate_plugin' which is an alternative to register_activation_hook().
-	 * I used this here because it integrates better with Skeleton.
+	 * I use this because it integrates better with Skeleton.
 	 */
 	public function activate_plugin( $plugin ) {
 		if ( WP_PLUGIN_DIR . '/' . $plugin != $this->plugin_file )
 			return;
 
 		global $wp_version;
-		// Check for compatibility
-		try {
-			// check WordPress version
-			if ( version_compare( $wp_version, $this->min_wp_version, '<' ) ) {
-			  throw new Exception( sprintf(
-			  	__( 'This plugin requires WordPress version %s or higher!', $this->plugin_name ),
-			  	$this->min_wp_version
-			  ) );
-			}
-		}
-		catch ( Exception $e ) {
-			deactivate_plugins( $this->plugin_file, true );
-			echo $e->getMessage();
-			return;
-		}
 
-		// Run actions from the child class.
-		$this->activate();
+		$error = '';
+
+		// check WordPress version
+		if ( version_compare( $wp_version, $this->min_wp_version, '<' ) )
+		  $error .= sprintf(
+		  	__( 'This plugin requires WordPress version %s or higher!', $this->plugin_name ),
+		  	$this->min_wp_version
+		  );
+
+		// Run checks from the child class.
+		$error .= $this->activate();
+
+		if( !empty( $error ) ) {
+			deactivate_plugins( $this->plugin_file, true );
+			echo $error;
+		}
 	}
 
 	/**
 	 * This method is hooked to 'deactivated_plugin' which is an alternative to register_deactivation_hook().
-	 * I used this here because it integrates better with Skeleton.
+	 * I use this because it integrates better with Skeleton.
 	 */
 	public function deactivated_plugin( $plugin ) {
 		if ( WP_PLUGIN_DIR . '/' . $plugin != $this->plugin_file )
